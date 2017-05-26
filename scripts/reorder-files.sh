@@ -15,8 +15,7 @@ fi
 
 echo "Moving audio files to new destination..."
 for filename in $(find $SRC_DIR -type f -name *.flac); do
-    #mv $dir $DEST_DIR
-    echo $filename
+    mv $filename $DEST_DIR
 done
 
 echo "Processing text files..."
