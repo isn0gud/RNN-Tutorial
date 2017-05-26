@@ -164,32 +164,68 @@ def BiRNN(conf_path, batch_x, seq_length, n_input, n_context):
         tf.summary.histogram("biases", b3)
         tf.summary.histogram("activations", layer_3)
 
-    # Create the forward and backward LSTM units. Inputs have length `n_cell_dim`.
-    # LSTM forget gate bias initialized at `1.0` (default), meaning less forgetting
-    # at the beginning of training (remembers more previous info)
-    with tf.name_scope('lstm'):
+    # # Create the forward and backward LSTM units. Inputs have length `n_cell_dim`.
+    # # LSTM forget gate bias initialized at `1.0` (default), meaning less forgetting
+    # # at the beginning of training (remembers more previous info)
+    # with tf.name_scope('lstm'):
+    #     # Forward direction cell:
+    #     lstm_fw_cell = tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True)
+    #     lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell,
+    #                                                  input_keep_prob=1.0 - dropout[3],
+    #                                                  output_keep_prob=1.0 - dropout[3],
+    #                                                  # seed=random_seed,
+    #                                                  )
+    #     # Backward direction cell:
+    #     lstm_bw_cell = tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True)
+    #     lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell,
+    #                                                  input_keep_prob=1.0 - dropout[4],
+    #                                                  output_keep_prob=1.0 - dropout[4],
+    #                                                  # seed=random_seed,
+    #                                                  )
+    #
+    #     # `layer_3` is now reshaped into `[n_steps, batch_size, 2*n_cell_dim]`,
+    #     # as the LSTM BRNN expects its input to be of shape `[max_time, batch_size, input_size]`.
+    #     layer_3 = tf.reshape(layer_3, [-1, batch_x_shape[0], n_hidden_3])
+    #
+    #     # Now we feed `layer_3` into the LSTM BRNN cell and obtain the LSTM BRNN output.
+    #     outputs, output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,
+    #                                                              cell_bw=lstm_bw_cell,
+    #                                                              inputs=layer_3,
+    #                                                              dtype=tf.float32,
+    #                                                              time_major=True,
+    #                                                              sequence_length=seq_length)
+    #
+    #     tf.summary.histogram("activations", outputs)
+    #
+    #     # Reshape outputs from two tensors each of shape [n_steps, batch_size, n_cell_dim]
+    #     # to a single tensor of shape [n_steps*batch_size, 2*n_cell_dim]
+    #     outputs = tf.concat(outputs, 2)
+    #     outputs = tf.reshape(outputs, [-1, 2 * n_cell_dim])
+
+    # Create the forward and backward RNN units. Inputs have length `n_cell_dim`.
+    with tf.name_scope('bi-rnn'):
         # Forward direction cell:
-        lstm_fw_cell = tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True)
-        lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell,
+        rnn_fw_cell = tf.contrib.rnn.BasicRNNCell(n_cell_dim)
+        rnn_fw_cell = tf.contrib.rnn.DropoutWrapper(rnn_fw_cell,
                                                      input_keep_prob=1.0 - dropout[3],
                                                      output_keep_prob=1.0 - dropout[3],
                                                      # seed=random_seed,
                                                      )
         # Backward direction cell:
-        lstm_bw_cell = tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True)
-        lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell,
+        rnn_bw_cell = tf.contrib.rnn.BasicRNNCell(n_cell_dim)
+        rnn_bw_cell = tf.contrib.rnn.DropoutWrapper(rnn_bw_cell,
                                                      input_keep_prob=1.0 - dropout[4],
                                                      output_keep_prob=1.0 - dropout[4],
                                                      # seed=random_seed,
                                                      )
 
         # `layer_3` is now reshaped into `[n_steps, batch_size, 2*n_cell_dim]`,
-        # as the LSTM BRNN expects its input to be of shape `[max_time, batch_size, input_size]`.
+        # as the BRNN expects its input to be of shape `[max_time, batch_size, input_size]`.
         layer_3 = tf.reshape(layer_3, [-1, batch_x_shape[0], n_hidden_3])
 
-        # Now we feed `layer_3` into the LSTM BRNN cell and obtain the LSTM BRNN output.
-        outputs, output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,
-                                                                 cell_bw=lstm_bw_cell,
+        # Now we feed `layer_3` into the BRNN cell and obtain the BRNN output.
+        outputs, output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=rnn_fw_cell,
+                                                                 cell_bw=rnn_bw_cell,
                                                                  inputs=layer_3,
                                                                  dtype=tf.float32,
                                                                  time_major=True,
