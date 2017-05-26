@@ -1,23 +1,14 @@
 #!/usr/bin/env python3
 
 import os
-import scipy.io.wavfile as wav
+import soundfile as sf
 
 import numpy as np
 from python_speech_features import mfcc
 from features.utils.text import text_to_char_array, normalize_txt_file
 
 
-def load_wavfile(wavfile):
-    """
-    Read a wav file using scipy.io.wavfile
-    """
-    rate, sig = wav.read(wavfile)
-    data_name = os.path.splitext(os.path.basename(wavfile))[0]
-    return rate, sig, data_name
-
-
-def get_audio_and_transcript(txt_files, wav_files, n_input, n_context):
+def get_audio_and_transcript(txt_files, flac_files, n_input, n_context):
     '''
     Loads audio files and text transcriptions from ordered lists of filenames.
     Converts to audio to MFCC arrays and text to numerical arrays.
@@ -29,9 +20,9 @@ def get_audio_and_transcript(txt_files, wav_files, n_input, n_context):
     transcript = []
     transcript_len = []
 
-    for txt_file, wav_file in zip(txt_files, wav_files):
+    for txt_file, flac_file in zip(txt_files, flac_files):
         # load audio and convert to features
-        audio_data = audiofile_to_input_vector(wav_file, n_input, n_context)
+        audio_data = audiofile_to_input_vector(flac_file, n_input, n_context)
         audio_data = audio_data.astype('float32')
 
         audio.append(audio_data)
@@ -62,8 +53,8 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext):
     # file, You can obtain one at http://mozilla.org/MPL/2.0/.
     '''
 
-    # Load wav files
-    fs, audio = wav.read(audio_filename)
+    # Load FLAC files
+    audio, fs = sf.read(audio_filename)
 
     # Get mfcc coefficients
     orig_inputs = mfcc(audio, samplerate=fs, numcep=numcep)

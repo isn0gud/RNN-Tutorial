@@ -96,9 +96,9 @@ class DataSet:
         end_idx = min(len(self._txt_files), self._start_idx + batch_size)
         idx_list = range(self._start_idx, end_idx)
         txt_files = [self._txt_files[i] for i in idx_list]
-        wav_files = [x.replace('.txt', '.wav') for x in txt_files]
+        flac_files = [x.replace('.txt', '.flac') for x in txt_files]
         (source, _, target, _) = get_audio_and_transcript(txt_files,
-                                                          wav_files,
+                                                          flac_files,
                                                           self._numcep,
                                                           self._numcontext)
         self._start_idx += batch_size
