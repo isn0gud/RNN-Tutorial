@@ -8,7 +8,7 @@ from python_speech_features import mfcc
 from features.utils.text import text_to_char_array, normalize_txt_file
 
 
-def get_audio_and_transcript(txt_files, wav_files, n_input, n_context):
+def get_audio_and_transcript(txt_files, flac_files, n_input, n_context):
     '''
     Loads audio files and text transcriptions from ordered lists of filenames.
     Converts to audio to MFCC arrays and text to numerical arrays.
@@ -20,9 +20,9 @@ def get_audio_and_transcript(txt_files, wav_files, n_input, n_context):
     transcript = []
     transcript_len = []
 
-    for txt_file, wav_file in zip(txt_files, wav_files):
+    for txt_file, flac_file in zip(txt_files, flac_files):
         # load audio and convert to features
-        audio_data = audiofile_to_input_vector(wav_file, n_input, n_context)
+        audio_data = audiofile_to_input_vector(flac_file, n_input, n_context)
         audio_data = audio_data.astype('float32')
 
         audio.append(audio_data)
