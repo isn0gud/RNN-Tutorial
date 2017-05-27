@@ -50,12 +50,14 @@ def read_datasets(conf_path, sets, numcep, numcontext,
                                       batch_size=config['batch_size'],
                                       numcep=numcep,
                                       numcontext=numcontext,
+                                      file_type=config['file_type'],
                                       start_idx=config['start_idx'],
                                       limit=config['limit'],
-                                      sort=config['sort']
+                                      sort=config['sort'],
                                       )
+
     datasets = {name: _read_data_set(dataset_config[name])
-                      if name in sets else None
+    if name in sets else None
                 for name in ('train', 'dev', 'test')}
     return DataSets(**datasets)
 
@@ -72,22 +74,24 @@ class DataSet:
     # file, You can obtain one at http://mozilla.org/MPL/2.0/.
     '''
 
-    def __init__(self, txt_files, thread_count, batch_size, numcep, numcontext):
+    def __init__(self, txt_files, thread_count, batch_size, numcep, numcontext, file_type):
         self._coord = None
         self._numcep = numcep
         self._txt_files = txt_files
         self._batch_size = batch_size
         self._numcontext = numcontext
+        self.file_type = file_type
         self._start_idx = 0
 
     @classmethod
-    def from_directory(cls, dirpath, thread_count, batch_size, numcep, numcontext, start_idx=0, limit=0, sort=None):
+    def from_directory(cls, dirpath, thread_count, batch_size, numcep, numcontext, file_type, start_idx=0, limit=0,
+                       sort=None):
         if not os.path.exists(dirpath):
             raise IOError("'%s' does not exist" % dirpath)
         txt_files = txt_filenames(dirpath, start_idx=start_idx, limit=limit, sort=sort)
         if len(txt_files) == 0:
             raise RuntimeError('start_idx=%d and limit=%d arguments result in zero files' % (start_idx, limit))
-        return cls(txt_files, thread_count, batch_size, numcep, numcontext)
+        return cls(txt_files, thread_count, batch_size, numcep, numcontext, file_type)
 
     def next_batch(self, batch_size=None):
         if batch_size is None:
@@ -96,9 +100,16 @@ class DataSet:
         end_idx = min(len(self._txt_files), self._start_idx + batch_size)
         idx_list = range(self._start_idx, end_idx)
         txt_files = [self._txt_files[i] for i in idx_list]
-        flac_files = [x.replace('.txt', '.flac') for x in txt_files]
+        if self.file_type == 'flac':
+            audio_files = [x.replace('.txt', '.flac') for x in txt_files]
+        elif self.file_type == 'wav':
+            audio_files = [x.replace('.txt', '.wav') for x in txt_files]
+        else:
+            raise ValueError('only wav or flac files are supported. add \'file_type\' to the config')
+
         (source, _, target, _) = get_audio_and_transcript(txt_files,
-                                                          flac_files,
+                                                          audio_files,
+                                                          self.file_type,
                                                           self._numcep,
                                                           self._numcontext)
         self._start_idx += batch_size
@@ -158,6 +169,7 @@ def _get_data_set_dict(conf_path, sets):
     if 'train' in sets:
         d = {}
         d['dir_pattern'] = parser.get(config_header, 'dir_pattern_train')
+        d['file_type'] = parser.get(config_header, 'file_type')
         d['limit'] = parser.getint(config_header, 'n_train_limit')
         d['sort'] = parser.get(config_header, 'sort_train')
         d['batch_size'] = parser.getint(config_header, 'batch_size_train')
@@ -168,6 +180,7 @@ def _get_data_set_dict(conf_path, sets):
     if 'dev' in sets:
         d = {}
         d['dir_pattern'] = parser.get(config_header, 'dir_pattern_dev')
+        d['file_type'] = parser.get(config_header, 'file_type')
         d['limit'] = parser.getint(config_header, 'n_dev_limit')
         d['sort'] = parser.get(config_header, 'sort_dev')
         d['batch_size'] = parser.getint(config_header, 'batch_size_dev')
@@ -178,6 +191,7 @@ def _get_data_set_dict(conf_path, sets):
     if 'test' in sets:
         d = {}
         d['dir_pattern'] = parser.get(config_header, 'dir_pattern_test')
+        d['file_type'] = parser.get(config_header, 'file_type')
         d['limit'] = parser.getint(config_header, 'n_test_limit')
         d['sort'] = parser.get(config_header, 'sort_test')
         d['batch_size'] = parser.getint(config_header, 'batch_size_test')

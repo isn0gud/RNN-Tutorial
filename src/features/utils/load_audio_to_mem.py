@@ -2,13 +2,23 @@
 
 import os
 import soundfile as sf
+import scipy.io.wavfile as wav
 
 import numpy as np
 from python_speech_features import mfcc
 from features.utils.text import text_to_char_array, normalize_txt_file
 
 
-def get_audio_and_transcript(txt_files, flac_files, n_input, n_context):
+def load_wavfile(wavfile):
+    """
+    Read a wav file using scipy.io.wavfile
+    """
+    rate, sig = wav.read(wavfile)
+    data_name = os.path.splitext(os.path.basename(wavfile))[0]
+    return rate, sig, data_name
+
+
+def get_audio_and_transcript(txt_files, audio_files, file_type, n_input, n_context):
     '''
     Loads audio files and text transcriptions from ordered lists of filenames.
     Converts to audio to MFCC arrays and text to numerical arrays.
@@ -20,9 +30,9 @@ def get_audio_and_transcript(txt_files, flac_files, n_input, n_context):
     transcript = []
     transcript_len = []
 
-    for txt_file, flac_file in zip(txt_files, flac_files):
+    for txt_file, audio_files in zip(txt_files, audio_files):
         # load audio and convert to features
-        audio_data = audiofile_to_input_vector(flac_file, n_input, n_context)
+        audio_data = audiofile_to_input_vector(audio_files, file_type, n_input, n_context)
         audio_data = audio_data.astype('float32')
 
         audio.append(audio_data)
@@ -41,7 +51,7 @@ def get_audio_and_transcript(txt_files, flac_files, n_input, n_context):
     return audio, audio_len, transcript, transcript_len
 
 
-def audiofile_to_input_vector(audio_filename, numcep, numcontext):
+def audiofile_to_input_vector(audio_filename, file_type, numcep, numcontext):
     '''
     Turn an audio file into feature representation.
 
@@ -53,8 +63,14 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext):
     # file, You can obtain one at http://mozilla.org/MPL/2.0/.
     '''
 
-    # Load FLAC files
-    audio, fs = sf.read(audio_filename)
+    if file_type == 'flac':
+        # Load FLAC files
+        audio, fs = sf.read(audio_filename)
+    elif file_type == 'wav':
+        # Load wav files
+        fs, audio = wav.read(audio_filename)
+    else:
+        raise ValueError('only wav or flac files are supported. add \'file_type\' to the config ')
 
     # Get mfcc coefficients
     orig_inputs = mfcc(audio, samplerate=fs, numcep=numcep)
@@ -91,14 +107,14 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext):
         need_empty_past = max(0, (context_past_min - time_slice))
         empty_source_past = list(empty_mfcc for empty_slots in range(need_empty_past))
         data_source_past = orig_inputs[max(0, time_slice - numcontext):time_slice]
-        assert(len(empty_source_past) + len(data_source_past) == numcontext)
+        assert (len(empty_source_past) + len(data_source_past) == numcontext)
 
         # Pick up to numcontext time slices in the future, and complete with empty
         # mfcc features
         need_empty_future = max(0, (time_slice - context_future_max))
         empty_source_future = list(empty_mfcc for empty_slots in range(need_empty_future))
         data_source_future = orig_inputs[time_slice + 1:time_slice + numcontext + 1]
-        assert(len(empty_source_future) + len(data_source_future) == numcontext)
+        assert (len(empty_source_future) + len(data_source_future) == numcontext)
 
         if need_empty_past:
             past = np.concatenate((empty_source_past, data_source_past))
@@ -115,7 +131,7 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext):
         future = np.reshape(future, numcontext * numcep)
 
         train_inputs[time_slice] = np.concatenate((past, now, future))
-        assert(len(train_inputs[time_slice]) == numcep + 2 * numcep * numcontext)
+        assert (len(train_inputs[time_slice]) == numcep + 2 * numcep * numcontext)
 
     # Scale/standardize the inputs
     # This can be done more efficiently in the TensorFlow graph
@@ -125,7 +141,6 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext):
 
 def pad_sequences(sequences, maxlen=None, dtype=np.float32,
                   padding='post', truncating='post', value=0.):
-
     '''
     # From TensorLayer:
     # http://tensorlayer.readthedocs.io/en/latest/_modules/tensorlayer/prepro.html
