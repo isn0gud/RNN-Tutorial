@@ -318,8 +318,9 @@ class Tf_train_ctc(object):
     def setup_optimizer(self):
         # Note: The optimizer is created in models/RNN/utils.py
         with tf.name_scope("train"):
-            self.optimizer = create_optimizer()
-            self.optimizer = self.optimizer.minimize(self.avg_loss)
+            batch = tf.Variable(0, trainable=False, dtype=tf.float32)
+            self.optimizer = create_optimizer(batch, self.batch_size, self.n_examples_train)
+            self.minimizer = self.optimizer.minimize(self.avg_loss, global_step=batch)
 
     def setup_decoder(self):
         with tf.name_scope("decode"):
@@ -370,13 +371,14 @@ class Tf_train_ctc(object):
             epoch_duration = time.time() - epoch_start
 
             log = 'Epoch {}/{}, train_cost: {:.3f}, \
-                   train_ler: {:.3f}, time: {:.2f} sec'
+                   train_ler: {:.3f}, time: {:.2f} sec, learning rate: {:.10f}'
             logger.info(log.format(
                 epoch + 1,
                 self.epochs,
                 self.train_cost,
                 self.train_ler,
-                epoch_duration))
+                epoch_duration,
+                self.sess.run(self.optimizer._lr)))
 
             summary_line = self.sess.run(
                 self.train_ler_op, {self.ler_placeholder: self.train_ler})
@@ -484,7 +486,7 @@ class Tf_train_ctc(object):
                 # avg_loss is the loss_op, optimizer is the train_op;
                 # running these pushes tensors (data) through graph
                 batch_cost, _ = self.sess.run(
-                    [self.avg_loss, self.optimizer], feed)
+                    [self.avg_loss, self.minimizer], feed)
                 self.train_cost += batch_cost * dataset._batch_size
                 logger.debug('Batch cost: %.2f | Train cost: %.2f',
                              batch_cost, self.train_cost)
