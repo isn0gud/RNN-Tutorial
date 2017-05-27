@@ -378,7 +378,7 @@ class Tf_train_ctc(object):
                 self.train_cost,
                 self.train_ler,
                 epoch_duration,
-                self.sess.run(self.optimizer._lr)))
+                self.sess.run(self.optimizer._learning_rate)))
 
             summary_line = self.sess.run(
                 self.train_ler_op, {self.ler_placeholder: self.train_ler})
