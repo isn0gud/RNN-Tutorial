@@ -522,7 +522,7 @@ class Tf_train_ctc(object):
 
         for batch in range(n_batches_per_epoch):
             # Get next batch of training data (audio features) and transcripts
-            source, source_lengths, sparse_labels, _ = dataset.next_batch()
+            source, source_lengths, sparse_labels = dataset.next_batch()
 
             feed = {self.input_tensor: source,
                     self.targets: sparse_labels,
