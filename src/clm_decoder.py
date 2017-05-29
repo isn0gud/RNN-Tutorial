@@ -27,9 +27,20 @@ class BeamLMDecoder:
     Beam-search decoder with character LM
     """
 
-    def __init__(self, lm) -> None:
+    def __init__(self, lm, beam_width=40, alpha=1.0, beta=0.0) -> None:
+        """
+        
+        :param lm: 
+        :param beam_width: 
+        :param alpha: language model weight
+        :param beta: insertion bonus
+        """
+
         super().__init__()
         self.lm = lm
+        self.beam_width = beam_width
+        self.alpha = alpha
+        self.beta = beta
 
     @staticmethod
     def log_add(a: float, b: float, c=float('-inf')):
@@ -39,29 +50,13 @@ class BeamLMDecoder:
         else:
             return math.log(psum)
 
-    def lm_score_final_char(self, prefix, next_char):
-        """
-        uses lm to score entire prefix
-        returns only the log prob of final char
-        
-        :param prefix: the hypothis so far
-        :param next_char: the next char in the hypothesis to get the probability for
-        :return: probability of next_char added to hypothesis
-        """
-        # todo
-
-        return None
-
-    def decode(self, ctc_probs, beam_width=40, alpha=1.0, beta=0.0):
+    def decode(self, ctc_probs):
 
         """
         Decoder with an LM
         returns the best hypothesis in characters
         
         :param ctc_probs: [num_chars x seq_length] probabilities for characters from the ctc model
-        :param beam_width: 
-        :param alpha: language model weight
-        :param beta: insertion bonus
         :return: (the best hypothesis in characters, probability of hypothesis (confidence measure?!) )
         """
 
@@ -70,7 +65,7 @@ class BeamLMDecoder:
         # change for loop if blank char != 0
         blank_char = 0
 
-        key_fun = lambda x: self.log_add(x[1].p_nb, x[1].p_b) + beta * x[1].n_c
+        key_fun = lambda x: self.log_add(x[1].p_nb, x[1].p_b) + self.beta * x[1].n_c
         default_init_fun = lambda: Hyp(float('-inf'), float('-inf'), 0)
 
         # current hypothesis
@@ -96,7 +91,7 @@ class BeamLMDecoder:
                 for c in range(1, C):
                     new_prefix = tuple(list(prefix) + [c])
 
-                    lm_prob = alpha * self.lm_score_final_char(prefix, c)
+                    lm_prob = self.alpha * self.lm.score_final_char(prefix, c)
 
                     H_next[new_prefix].n_c = hyp.n_c + 1
                     if len(prefix) == 0 or (len(prefix) > 0 and c != prefix[-1]):
@@ -115,7 +110,7 @@ class BeamLMDecoder:
                                                                H_next[new_prefix].p_nb)
 
             H_old = H_next
-            H_curr = sorted(H_next.items(), key=key_fun, reverse=True)[:beam_width]
+            H_curr = sorted(H_next.items(), key=key_fun, reverse=True)[:self.beam_width]
 
         # hyp = ''.join([self.int_char_map[i] for i in Hcurr[0][0]])
         hyp = H_curr[0][0]

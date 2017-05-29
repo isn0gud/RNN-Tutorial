@@ -23,6 +23,8 @@ import utils.gpu as gpu_tool
 from models.RNN.rnn import BiRNN as BiRNN_model
 from models.RNN.rnn import SimpleLSTM as SimpleLSTM_model
 
+from clm_decoder import BeamLMDecoder
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,6 +75,18 @@ class Tf_train_ctc(object):
         # set the directories
         self.set_up_directories(model_name)
 
+        # restoring model and thus loading language model for beam search decoding
+        if model_name != None:
+            def lm_score_final_char(prefix, new_char):
+                #todo
+                return 1.0 / 5.0
+
+            self.lm = dict(score_final_char=lm_score_final_char)
+
+            self.beam_search_lm_decoder = BeamLMDecoder(self.lm, self.beam_width_lm,
+                                                        self.beam_lm_decoder_alpha,
+                                                        self.beam_lm_decoder_beta)
+
         # set up the model
         self.set_up_model()
 
@@ -82,6 +96,11 @@ class Tf_train_ctc(object):
             raise IOError("Configuration file '%s' does not exist" % self.conf_path)
         logging.info('Loading config from %s', self.conf_path)
         parser.read(self.conf_path)
+
+        config_header = 'lmdecoder'
+        self.beam_width_lm = parser.getint(config_header, 'beam_width')
+        self.beam_lm_decoder_alpha = parser.getfloat(config_header, 'alpha')
+        self.beam_lm_decoder_beta = parser.getfloat(config_header, 'beta')
 
         # set which set of configs to import
         config_header = 'nn'
@@ -252,8 +271,13 @@ class Tf_train_ctc(object):
 
             logger.info(section.format('Decoding test data'))
             # make the assumption for working on the test data, that the epoch here is the last epoch
-            _, self.test_ler = self.run_batches(self.data_sets.test, is_training=False,
-                                                decode=True, write_to_file=False, epoch=self.epochs)
+            _, self.test_ler, self.soft_max_over_chars = self.run_batches(self.data_sets.test, is_training=False,
+                                                                          decode=True, write_to_file=False,
+                                                                          epoch=self.epochs)
+
+            best_hyp, p_blank = self.beam_search_lm_decoder.decode(soft_max_over_chars)
+
+            # todo add a use for the decoded stuff
 
             # Add the final test data to the summary writer
             # (single point on the graph for end of training run)
@@ -361,7 +385,7 @@ class Tf_train_ctc(object):
 
             epoch_start = time.time()
 
-            self.train_cost, self.train_ler = self.run_batches(
+            self.train_cost, self.train_ler, _ = self.run_batches(
                 self.data_sets.train,
                 is_training=True,
                 decode=False,
@@ -410,7 +434,7 @@ class Tf_train_ctc(object):
                     self.SESSION_DIR, 'model-best.ckpt'))
                 logger.info(
                     "Model with best validation label error rate saved: {}".
-                    format(save_path))
+                        format(save_path))
 
             if stop_training:
                 break
@@ -422,11 +446,11 @@ class Tf_train_ctc(object):
     def run_validation_step(self, epoch):
         dev_ler = 0
 
-        _, dev_ler = self.run_batches(self.data_sets.dev,
-                                      is_training=False,
-                                      decode=True,
-                                      write_to_file=False,
-                                      epoch=epoch)
+        _, dev_ler, _ = self.run_batches(self.data_sets.dev,
+                                         is_training=False,
+                                         decode=True,
+                                         write_to_file=False,
+                                         epoch=epoch)
 
         logger.info('Validation Label Error Rate: {}'.format(dev_ler))
 
@@ -472,6 +496,7 @@ class Tf_train_ctc(object):
 
         self.train_cost = 0
         self.train_ler = 0
+        soft_max_over_chars = list()
 
         for batch in range(n_batches_per_epoch):
             # Get next batch of training data (audio features) and transcripts
@@ -494,13 +519,15 @@ class Tf_train_ctc(object):
             self.train_ler += self.sess.run(self.ler, feed_dict=feed) * dataset._batch_size
             logger.debug('Label error rate: %.2f', self.train_ler)
 
+            soft_max_over_chars.append(self.logits)
+
             # Turn on decode only 1 batch per epoch
             if decode and batch == 0:
                 d = self.sess.run(self.decoded[0], feed_dict={
                     self.input_tensor: source,
                     self.targets: sparse_labels,
                     self.seq_length: source_lengths}
-                )
+                                  )
                 dense_decoded = tf.sparse_tensor_to_dense(
                     d, default_value=-1).eval(session=self.sess)
                 dense_labels = sparse_tuple_to_texts(sparse_labels)
@@ -531,12 +558,13 @@ class Tf_train_ctc(object):
             [self.avg_loss, self.summary_op], feed)
         self.writer.add_summary(summary_line, epoch)
 
-        return self.train_cost, self.train_ler
+        return self.train_cost, self.train_ler, soft_max_over_chars
 
 
 # to run in console
 if __name__ == '__main__':
     import click
+
 
     # Use click to parse command line arguments
     @click.command()
@@ -557,5 +585,6 @@ if __name__ == '__main__':
 
         # run the training
         tf_train_ctc.run_model()
+
 
     main()
