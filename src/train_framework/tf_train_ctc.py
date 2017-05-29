@@ -78,7 +78,7 @@ class Tf_train_ctc(object):
         # restoring model and thus loading language model for beam search decoding
         if model_name != None:
             def lm_score_final_char(prefix, new_char):
-                #todo
+                # todo
                 return 1.0 / 5.0
 
             self.lm = dict(score_final_char=lm_score_final_char)
@@ -271,9 +271,11 @@ class Tf_train_ctc(object):
 
             logger.info(section.format('Decoding test data'))
             # make the assumption for working on the test data, that the epoch here is the last epoch
-            _, self.test_ler, self.soft_max_over_chars = self.run_batches(self.data_sets.test, is_training=False,
-                                                                          decode=True, write_to_file=False,
-                                                                          epoch=self.epochs)
+            _, self.test_ler, self.test_wer, self.soft_max_over_chars = self.run_batches(self.data_sets.test,
+                                                                                         is_training=False,
+                                                                                         decode=True,
+                                                                                         write_to_file=False,
+                                                                                         epoch=self.epochs)
 
             best_hyp, p_blank = self.beam_search_lm_decoder.decode(soft_max_over_chars)
 
@@ -282,10 +284,17 @@ class Tf_train_ctc(object):
             # Add the final test data to the summary writer
             # (single point on the graph for end of training run)
             summary_line = self.sess.run(
-                self.test_ler_op, {self.ler_placeholder: self.test_ler})
+                self.test_ler_op,
+                {self.ler_placeholder: self.test_ler})
+            self.writer.add_summary(summary_line, self.epochs)
+
+            summary_line = self.sess.run(
+                self.test_wer_op,
+                {self.wer_placeholder: self.test_wer})
             self.writer.add_summary(summary_line, self.epochs)
 
             logger.info('Test Label Error Rate: {}'.format(self.test_ler))
+            logger.info('Test WER: {}'.format(self.test_wer))
 
             # save train summaries to disk
             self.writer.flush()
@@ -301,6 +310,8 @@ class Tf_train_ctc(object):
 
         # Use sparse_placeholder; will generate a SparseTensor, required by ctc_loss op.
         self.targets = tf.sparse_placeholder(tf.int32, name='targets')
+        # Use sparse_placeholder; will generate a SparseTensor, required by wer
+        self.words = tf.sparse_placeholder(tf.int32, name='words')
         # 1d array of size [batch_size]
         self.seq_length = tf.placeholder(tf.int32, [None], name='seq_length')
 
@@ -374,6 +385,16 @@ class Tf_train_ctc(object):
             self.test_ler_op = tf.summary.scalar(
                 "test_label_error_rate", self.ler_placeholder)
 
+            # Compute the word edit (Levenshtein) distance of the top path
+            distance = tf.edit_distance(
+                tf.cast(self.decoded[0], tf.int32), self.targets)
+            self.wer = tf.reduce_sum(distance, name='word_error_rate')
+            self.wer_placeholder = tf.placeholder(dtype=tf.float32, shape=[])
+            self.dev_wer_op = tf.summary.scalar(
+                "dev_wer", self.wer_placeholder)
+            self.test_wer_op = tf.summary.scalar(
+                "test_wer", self.wer_placeholder)
+
     def run_training_epochs(self):
         train_start = time.time()
         for epoch in range(self.epochs):
@@ -446,16 +467,21 @@ class Tf_train_ctc(object):
     def run_validation_step(self, epoch):
         dev_ler = 0
 
-        _, dev_ler, _ = self.run_batches(self.data_sets.dev,
-                                         is_training=False,
-                                         decode=True,
-                                         write_to_file=False,
-                                         epoch=epoch)
+        _, dev_ler, dev_wer, _ = self.run_batches(self.data_sets.dev,
+                                                  is_training=False,
+                                                  decode=True,
+                                                  write_to_file=False,
+                                                  epoch=epoch)
 
         logger.info('Validation Label Error Rate: {}'.format(dev_ler))
+        logger.info('Validation WER: {}'.format(dev_wer))
 
         summary_line = self.sess.run(
             self.dev_ler_op, {self.ler_placeholder: dev_ler})
+        self.writer.add_summary(summary_line, epoch)
+
+        summary_line = self.sess.run(
+            self.dev_wer_op, {self.wer_placeholder: dev_wer})
         self.writer.add_summary(summary_line, epoch)
 
         if dev_ler < self.min_dev_ler:
@@ -489,6 +515,28 @@ class Tf_train_ctc(object):
 
         return is_checkpoint_step, is_validation_step
 
+    def sparse_words(self, words):
+        num_words = len(words)
+        indices = [[0, 0, xi] for xi, x in enumerate(words)]
+        return tf.SparseTensorValue(indices, words, [num_words, 1, 1])
+
+    def calculate_wer(self, ref, hyp):
+        ref_words = ref.split()
+        if len(ref_words) == 0: return 1
+        hyp_words = hyp.split()
+
+        ref_string_sparse = self.sparse_words(ref_words)
+        hyp_string_sparse = self.sparse_words(hyp_words)
+
+        ref_input = tf.sparse_placeholder(dtype=tf.string)
+        hyp_input = tf.sparse_placeholder(dtype=tf.string)
+
+        edit_distances = tf.edit_distance(hyp_input, ref_input, normalize=True)
+
+        feed_dict = {hyp_input: hyp_string_sparse, ref_input: ref_string_sparse}
+        wer = self.sess.run(tf.reduce_sum(edit_distances), feed_dict=feed_dict)
+        return wer
+
     def run_batches(self, dataset, is_training, decode, write_to_file, epoch):
         n_examples = len(dataset._txt_files)
 
@@ -497,6 +545,7 @@ class Tf_train_ctc(object):
         self.train_cost = 0
         self.train_ler = 0
         soft_max_over_chars = list()
+        self.train_wer = 0
 
         for batch in range(n_batches_per_epoch):
             # Get next batch of training data (audio features) and transcripts
@@ -532,21 +581,26 @@ class Tf_train_ctc(object):
                     d, default_value=-1).eval(session=self.sess)
                 dense_labels = sparse_tuple_to_texts(sparse_labels)
 
+                train_wers = []
+
                 # only print a set number of example translations
                 counter = 0
                 counter_max = 4
-                if counter < counter_max:
-                    for orig, decoded_arr in zip(dense_labels, dense_decoded):
-                        # convert to strings
-                        decoded_str = ndarray_to_text(decoded_arr)
+                for orig, decoded_arr in zip(dense_labels, dense_decoded):
+                    # convert to strings
+                    decoded_str = ndarray_to_text(decoded_arr)
+                    if counter < counter_max:
                         logger.info('Batch {}, file {}'.format(batch, counter))
                         logger.info('Original: {}'.format(orig))
                         logger.info('Decoded:  {}'.format(decoded_str))
-                        counter += 1
+                    counter += 1
+                    train_wers.append(self.calculate_wer(orig, decoded_str))
 
                 # save out variables for testing
                 self.dense_decoded = dense_decoded
                 self.dense_labels = dense_labels
+
+                self.train_wer = np.mean(train_wers)
 
         # Metrics mean
         if is_training:
@@ -558,7 +612,7 @@ class Tf_train_ctc(object):
             [self.avg_loss, self.summary_op], feed)
         self.writer.add_summary(summary_line, epoch)
 
-        return self.train_cost, self.train_ler, soft_max_over_chars
+        return self.train_cost, self.train_ler, self.train_wer, soft_max_over_chars
 
 
 # to run in console
