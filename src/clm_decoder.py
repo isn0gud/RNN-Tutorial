@@ -1,6 +1,9 @@
 import math
 import numpy as np
 import collections
+import os
+
+from six.moves import cPickle
 
 
 # inspired by https://github.com/amaas/stanford-ctc
@@ -27,10 +30,10 @@ class BeamLMDecoder:
     Beam-search decoder with character LM
     """
 
-    def __init__(self, lm, beam_width=40, alpha=1.0, beta=0.0) -> None:
+    def __init__(self, lm, vocab_save_dir, beam_width=40, alpha=1.0, beta=0.0) -> None:
         """
         
-        :param lm: 
+        :param lm: language model with 'prob_next_char(prefix, c)' method
         :param beam_width: 
         :param alpha: language model weight
         :param beta: insertion bonus
@@ -42,6 +45,9 @@ class BeamLMDecoder:
         self.alpha = alpha
         self.beta = beta
 
+        with open(os.path.join(vocab_save_dir, 'chars_vocab.pkl'), 'rb') as f:
+            self.chars, self.vocab = cPickle.load(f)
+
     @staticmethod
     def log_add(a: float, b: float, c=float('-inf')):
         psum = math.exp(a) + math.exp(b) + math.exp(c)
@@ -49,6 +55,15 @@ class BeamLMDecoder:
             return float('-inf')
         else:
             return math.log(psum)
+
+    def int2str(self, int_chars):
+        str = ""
+        if type(int_chars) == tuple:
+            for c in int_chars:
+                str += self.chars[c]
+        elif type(int_chars) == int:
+            str += self.chars[int_chars]
+        return str
 
     def decode(self, ctc_probs):
 
@@ -91,7 +106,7 @@ class BeamLMDecoder:
                 for c in range(1, C):
                     new_prefix = tuple(list(prefix) + [c])
 
-                    lm_prob = self.alpha * self.lm.score_final_char(prefix, c)
+                    lm_prob = self.alpha * self.lm.prob_next_char(self.int2str(prefix), self.int2str(c))
 
                     H_next[new_prefix].n_c = hyp.n_c + 1
                     if len(prefix) == 0 or (len(prefix) > 0 and c != prefix[-1]):
@@ -112,7 +127,7 @@ class BeamLMDecoder:
             H_old = H_next
             H_curr = sorted(H_next.items(), key=key_fun, reverse=True)[:self.beam_width]
 
-        # hyp = ''.join([self.int_char_map[i] for i in Hcurr[0][0]])
-        hyp = H_curr[0][0]
+        hyp = ''.join([self.chars[i] for i in H_curr[0][0]])
+        # hyp = H_curr[0][0]
 
         return hyp, key_fun(H_curr[0])

@@ -24,6 +24,7 @@ from models.RNN.rnn import BiRNN as BiRNN_model
 from models.RNN.rnn import SimpleLSTM as SimpleLSTM_model
 
 from clm_decoder import BeamLMDecoder
+from char_rnn.lm_predictor import LMPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -77,13 +78,11 @@ class Tf_train_ctc(object):
 
         # restoring model and thus loading language model for beam search decoding
         if model_name != None:
-            def lm_score_final_char(prefix, new_char):
-                # todo
-                return 1.0 / 5.0
+            self.lm = LMPredictor(self.lm_model_dir)
+            # pr = lambda x, y: 0.5
+            # self.lm = dict(prob_next_char=pr)
 
-            self.lm = dict(score_final_char=lm_score_final_char)
-
-            self.beam_search_lm_decoder = BeamLMDecoder(self.lm, self.beam_width_lm,
+            self.beam_search_lm_decoder = BeamLMDecoder(self.lm, self.lm_model_dir, self.beam_width_lm,
                                                         self.beam_lm_decoder_alpha,
                                                         self.beam_lm_decoder_beta)
 
@@ -101,6 +100,7 @@ class Tf_train_ctc(object):
         self.beam_width_lm = parser.getint(config_header, 'beam_width')
         self.beam_lm_decoder_alpha = parser.getfloat(config_header, 'alpha')
         self.beam_lm_decoder_beta = parser.getfloat(config_header, 'beta')
+        self.lm_model_dir = parser.get(config_header, 'lm_model_dir')
 
         # set which set of configs to import
         config_header = 'nn'
@@ -271,11 +271,11 @@ class Tf_train_ctc(object):
 
             logger.info(section.format('Decoding test data'))
             # make the assumption for working on the test data, that the epoch here is the last epoch
-            _, self.test_ler, self.test_wer, self.soft_max_over_chars = self.run_batches(self.data_sets.test,
-                                                                                         is_training=False,
-                                                                                         decode=True,
-                                                                                         write_to_file=False,
-                                                                                         epoch=self.epochs)
+            _, self.test_ler, self.test_wer, soft_max_over_chars = self.run_batches(self.data_sets.test,
+                                                                                    is_training=False,
+                                                                                    decode=True,
+                                                                                    write_to_file=False,
+                                                                                    epoch=self.epochs)
 
             best_hyp, p_blank = self.beam_search_lm_decoder.decode(soft_max_over_chars)
 
