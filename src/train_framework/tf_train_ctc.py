@@ -24,7 +24,6 @@ from models.RNN.rnn import BiRNN as BiRNN_model
 from models.RNN.rnn import SimpleLSTM as SimpleLSTM_model
 
 from clm_decoder import BeamLMDecoder
-from char_rnn.lm_predictor import LMPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +77,7 @@ class Tf_train_ctc(object):
 
         # restoring model and thus loading language model for beam search decoding
         if model_name != None:
-            self.lm = LMPredictor(self.lm_model_dir)
-            # pr = lambda x, y: 0.5
-            # self.lm = dict(prob_next_char=pr)
-
-            self.beam_search_lm_decoder = BeamLMDecoder(self.lm, self.lm_model_dir, self.beam_width_lm,
+            self.beam_search_lm_decoder = BeamLMDecoder(self.lm_model_dir, self.beam_width_lm,
                                                         self.beam_lm_decoder_alpha,
                                                         self.beam_lm_decoder_beta)
 
@@ -277,9 +272,14 @@ class Tf_train_ctc(object):
                                                                                     write_to_file=False,
                                                                                     epoch=self.epochs)
 
-            best_hyp, p_blank = self.beam_search_lm_decoder.decode(soft_max_over_chars)
-
-            # todo add a use for the decoded stuff
+            for single_ctc_prob in soft_max_over_chars:
+                # soft_max_over_chars [max_seq_len, batch_size, num_chars]
+                batch_size = single_ctc_prob.shape[1]
+                for b in range(batch_size):
+                    sample = single_ctc_prob[:, b, :]
+                    sample = sample.T
+                    best_hyp, p_blank = self.beam_search_lm_decoder.decode(sample)
+                    logger.info('Beam search decoded seq: {} - prob: {}'.format(best_hyp, p_blank))
 
             # Add the final test data to the summary writer
             # (single point on the graph for end of training run)
@@ -568,7 +568,10 @@ class Tf_train_ctc(object):
             self.train_ler += self.sess.run(self.ler, feed_dict=feed) * dataset._batch_size
             logger.debug('Label error rate: %.2f', self.train_ler)
 
-            soft_max_over_chars.append(self.logits)
+            soft_max_over_chars.append(self.sess.run(self.logits, feed_dict={
+                self.input_tensor: source,
+                self.targets: sparse_labels,
+                self.seq_length: source_lengths}))
 
             # Turn on decode only 1 batch per epoch
             if decode and batch == 0:

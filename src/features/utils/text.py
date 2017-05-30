@@ -142,6 +142,32 @@ def ndarray_to_text(value):
     return results.replace('`', ' ')
 
 
+def ndarray_to_text_for_lm(value):
+    '''
+    This function has been modified from Mozilla DeepSpeech:
+    https://github.com/mozilla/DeepSpeech/blob/master/util/text.py
+
+    # This Source Code Form is subject to the terms of the Mozilla Public
+    # License, v. 2.0. If a copy of the MPL was not distributed with this
+    # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+    '''
+    results = ''
+    for i in range(len(value)):
+        # todo fix hack
+        if value[i] == 27:  # is ascii char {
+            results += " "
+        elif value[i] == 28:  # is ascii char |
+            results += " "
+        elif value[i] == 29:  # is ascii char }
+            results += " "
+        else:
+            results += chr(value[i] + FIRST_INDEX)
+    results = results.replace('`', ' ').upper()
+    #todo remove print
+    print(results, value)
+    return results
+
+
 def gather_nd(params, indices, shape):
     '''
     # Function aken from https://github.com/tensorflow/tensorflow/issues/206#issuecomment-229678962

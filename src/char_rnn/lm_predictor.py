@@ -5,7 +5,7 @@ from char_rnn.model import Model
 import tensorflow as tf
 
 
-class LMPredictor:
+class LModel:
     def __init__(self, save_dir) -> None:
         super().__init__()
 
@@ -16,18 +16,32 @@ class LMPredictor:
         with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
             self.chars, self.vocab = cPickle.load(f)
 
-        self.model = Model(self.saved_args, training=False)
+        self.graph = tf.Graph()
+        with self.graph.as_default():
+            self.model = Model(self.saved_args, training=False)
 
     def prob_next_char(self, prefix, char):
-        with tf.Session() as sess:
-            tf.global_variables_initializer().run()
-            saver = tf.train.Saver(tf.global_variables())
-            ckpt = tf.train.get_checkpoint_state(self.save_dir)
-            if ckpt and ckpt.model_checkpoint_path:
-                saver.restore(sess, ckpt.model_checkpoint_path)
-                prob_next_char = self.model.prob_next_char(sess, self.chars, self.vocab, char,
-                                                           prefix)
-                return prob_next_char
+        #     Build a graph containing `net1`.
+        if prefix == "":
+            # todo this should be handled by the language model to return the most probable chars that begin a sequence
+            # if ther is no prefix return equal prob for each char
+            return 1.0 / 29.0
+        else:
+            with self.graph.as_default():
+                with tf.Session() as sess:
+                    tf.global_variables_initializer().run()
+                    saver = tf.train.Saver(tf.global_variables())
+                    ckpt = tf.train.get_checkpoint_state(self.save_dir)
+                    if ckpt and ckpt.model_checkpoint_path:
+                        saver.restore(sess, ckpt.model_checkpoint_path)
+                        prob_next_char = self.model.prob_next_char(sess, self.chars, self.vocab, char,
+                                                                   prefix)
+                        return prob_next_char
 
-                # print('Probability for [{}->{}] == {}'
-                #       .format(args.prime, args.next, prob_next_char))
+                        # print('Probability for [{}->{}] == {}'
+                        #       .format(args.prime, args.next, prob_next_char))
+
+
+if __name__ == '__main__':
+    predictor = LModel("data/dev-clean-50k-night/checkpoints")
+    print(predictor.prob_next_char("HELLO MY NAME IS", " "))
