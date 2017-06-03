@@ -4,11 +4,15 @@ import collections
 import os
 
 from six.moves import cPickle
+from tqdm import tqdm
+
 from char_rnn.lm_predictor import LModel
 from  features.utils.text import ndarray_to_text_for_lm
 
-
 # inspired by https://github.com/amaas/stanford-ctc
+
+BLANK_CHAR_IDX = 28
+
 
 class Hyp(object):
     """
@@ -49,7 +53,7 @@ class BeamLMDecoder:
 
     @staticmethod
     def log_add(a: float, b: float, c=float('-inf')):
-        #todo fix hack
+        # todo fix hack
         try:
             psum = math.exp(a) + math.exp(b) + math.exp(c)
             if psum == 0.0:
@@ -84,7 +88,8 @@ class BeamLMDecoder:
         # 'defaultdict' returns default value instead of None if item does not exist in dict yet
         H_old = collections.defaultdict(default_init_fun)
 
-        for t in range(T):
+        for t in tqdm(range(T)):
+            # for t in range(T):
             H_curr = dict(H_curr)
             H_next = collections.defaultdict(default_init_fun)
 
@@ -97,15 +102,19 @@ class BeamLMDecoder:
                 if len(prefix) > 0:
                     H_next[prefix].p_nb = self.log_add(hyp.p_nb + ctc_probs[prefix[-1], t], H_next[prefix].p_nb)
 
+                lm_prob_next_char = self.lm.prob_next_chars(ndarray_to_text_for_lm(prefix))
                 # for all chars that are not blank char
                 for c in range(1, C):
                     new_prefix = tuple(list(prefix) + [c])
-
-                    lm_prob = self.alpha * self.lm.prob_next_char(ndarray_to_text_for_lm(prefix),
-                                                            ndarray_to_text_for_lm([c]))
+                    if c == BLANK_CHAR_IDX:
+                        # index 28 is the blank char and does not exist in the language model
+                        lm_prob = 0
+                    else:
+                        lm_prob = self.alpha * lm_prob_next_char[ndarray_to_text_for_lm([c])]
 
                     H_next[new_prefix].n_c = hyp.n_c + 1
                     if len(prefix) == 0 or (len(prefix) > 0 and c != prefix[-1]):
+                        #no prefix or prefix does not end with current char
                         H_next[new_prefix].p_nb = self.log_add(hyp.p_nb + ctc_probs[c, t] + lm_prob,
                                                                hyp.p_b + ctc_probs[c, t] + lm_prob,
                                                                H_next[new_prefix].p_nb)

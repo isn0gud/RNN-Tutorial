@@ -163,8 +163,6 @@ def ndarray_to_text_for_lm(value):
         else:
             results += chr(value[i] + FIRST_INDEX)
     results = results.replace('`', ' ').upper()
-    #todo remove print
-    print(results, value)
     return results
 
 

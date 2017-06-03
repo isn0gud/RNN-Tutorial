@@ -66,15 +66,16 @@ class Model():
             prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
             return tf.nn.embedding_lookup(embedding, prev_symbol)
 
-        outputs, last_state = legacy_seq2seq.rnn_decoder(inputs, self.initial_state, cell, loop_function=loop if not training else None, scope='rnnlm')
+        outputs, last_state = legacy_seq2seq.rnn_decoder(inputs, self.initial_state, cell,
+                                                         loop_function=loop if not training else None, scope='rnnlm')
         output = tf.reshape(tf.concat(outputs, 1), [-1, args.rnn_size])
-        
+
         self.logits = tf.matmul(output, softmax_w) + softmax_b
         self.probs = tf.nn.softmax(self.logits)
         loss = legacy_seq2seq.sequence_loss_by_example(
-                [self.logits],
-                [tf.reshape(self.targets, [-1])],
-                [tf.ones([args.batch_size * args.seq_length])])
+            [self.logits],
+            [tf.reshape(self.targets, [-1])],
+            [tf.ones([args.batch_size * args.seq_length])])
         self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
         self.perplexity = tf.exp(self.cost)
         with tf.name_scope('cost'):
@@ -83,7 +84,7 @@ class Model():
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars),
-                args.grad_clip)
+                                          args.grad_clip)
         with tf.name_scope('optimizer'):
             optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
@@ -113,7 +114,6 @@ class Model():
             acc_metric = tf.summary.scalar('test_accuracy', self.avg_batch_acc)
             self.test_metrics = tf.summary.merge([loss_metric, perp_metric, acc_metric], name='test_metrics')
 
-
     def sample(self, sess, chars, vocab, num=200, prime='The ', sampling_type=1):
         state = sess.run(self.cell.zero_state(1, tf.float32))
         for char in prime[:-1]:
@@ -125,7 +125,7 @@ class Model():
         def weighted_pick(weights):
             t = np.cumsum(weights)
             s = np.sum(weights)
-            return(int(np.searchsorted(t, np.random.rand(1)*s)))
+            return (int(np.searchsorted(t, np.random.rand(1) * s)))
 
         ret = prime
         char = prime[-1]
@@ -168,3 +168,21 @@ class Model():
         p = probs[0]
 
         return p[vocab[next_char]]
+
+    def prob_next_chars(self, sess, chars, vocab, prime='The '):
+        state = sess.run(self.cell.zero_state(1, tf.float32))
+        for char in prime[:-1]:
+            x = np.zeros((1, 1))
+            x[0, 0] = vocab[char]
+            feed = {self.input_data: x, self.initial_state: state}
+            [state] = sess.run([self.final_state], feed)
+
+        ret = prime
+        char = prime[-1]
+        x = np.zeros((1, 1))
+        x[0, 0] = vocab[char]
+        feed = {self.input_data: x, self.initial_state: state}
+        [probs, state] = sess.run([self.probs, self.final_state], feed)
+        p = probs[0]
+        ret = dict(map(lambda idx_n_char_prob: (chars[idx_n_char_prob[0]], idx_n_char_prob[1]), enumerate(p)))
+        return ret
