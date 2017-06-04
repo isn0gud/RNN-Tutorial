@@ -273,7 +273,7 @@ class Tf_train_ctc(object):
 
             logger.info(section.format('Decoding test data'))
             # make the assumption for working on the test data, that the epoch here is the last epoch
-            _, self.test_ler, self.test_wer, soft_max_over_chars = self.run_batches(self.data_sets.test,
+            _, self.test_ler, self.test_wer = self.run_batches(self.data_sets.test,
                                                                                     is_training=False,
                                                                                     decode=True,
                                                                                     write_to_file=False,
