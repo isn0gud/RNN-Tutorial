@@ -73,11 +73,13 @@ class BeamLMDecoder:
         :param ctc_probs: [num_chars x seq_length] probabilities for characters from the ctc model
         :return: (the best hypothesis in characters, probability of hypothesis (confidence measure?!) )
         """
+        #move ctc softmax over chars to log space
+        ctc_probs = np.log(ctc_probs)
 
         C = ctc_probs.shape[0]
         T = ctc_probs.shape[1]
         # change for loop if blank char != 0
-        blank_char = 0
+        blank_char = 28
 
         key_fun = lambda x: self.log_add(x[1].p_nb, x[1].p_b) + self.beta * x[1].n_c
         default_init_fun = lambda: Hyp(float('-inf'), float('-inf'), 0)
@@ -104,7 +106,7 @@ class BeamLMDecoder:
 
                 lm_prob_next_char = self.lm.prob_next_chars(ndarray_to_text_for_lm(prefix))
                 # for all chars that are not blank char
-                for c in range(1, C):
+                for c in range(C - 1):
                     new_prefix = tuple(list(prefix) + [c])
                     if c == BLANK_CHAR_IDX:
                         # index 28 is the blank char and does not exist in the language model
@@ -114,7 +116,7 @@ class BeamLMDecoder:
 
                     H_next[new_prefix].n_c = hyp.n_c + 1
                     if len(prefix) == 0 or (len(prefix) > 0 and c != prefix[-1]):
-                        #no prefix or prefix does not end with current char
+                        # no prefix or prefix does not end with current char
                         H_next[new_prefix].p_nb = self.log_add(hyp.p_nb + ctc_probs[c, t] + lm_prob,
                                                                hyp.p_b + ctc_probs[c, t] + lm_prob,
                                                                H_next[new_prefix].p_nb)

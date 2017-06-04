@@ -3,6 +3,7 @@ import os
 from six.moves import cPickle
 from char_rnn.model import Model
 import tensorflow as tf
+import numpy as np
 
 
 class LModel:
@@ -26,21 +27,6 @@ class LModel:
             ckpt = tf.train.get_checkpoint_state(self.save_dir)
             saver.restore(self.sess, ckpt.model_checkpoint_path)
 
-    def prob_next_char(self, prefix, char):
-        #     Build a graph containing `net1`.
-        if prefix == "":
-            # todo this should be handled by the language model to return the most probable chars that begin a sequence
-            # if ther is no prefix return equal prob for each char
-            return 1.0 / 29.0
-        else:
-            with self.graph.as_default():
-                prob_next_char = self.model.prob_next_char(self.sess, self.chars, self.vocab, char,
-                                                           prefix)
-                return prob_next_char
-
-                # print('Probability for [{}->{}] == {}'
-                #       .format(args.prime, args.next, prob_next_char))
-
     def prob_next_chars(self, prefix):
         #     Build a graph containing `net1`.
         if prefix == "":
@@ -50,11 +36,11 @@ class LModel:
                            enumerate([1.0 / 29.0] * 28)))
             # beginning with space prob = 0
             ret[0] = 0
-            return ret
         else:
             with self.graph.as_default():
-                prob_next_chars = self.model.prob_next_chars(self.sess, self.chars, self.vocab, prefix)
-                return prob_next_chars
+                ret = self.model.prob_next_chars(self.sess, self.chars, self.vocab, prefix)
+        ret = {k: np.log(v) for k, v in ret.items()}
+        return ret
 
                 # print('Probability for [{}->{}] == {}'
                 #       .format(args.prime, args.next, prob_next_char))
@@ -62,6 +48,5 @@ class LModel:
 
 if __name__ == '__main__':
     predictor = LModel("data/dev-clean-50k-night/checkpoints")
-    print(predictor.prob_next_char("HELLO MY NAME IS", " "))
-    print(predictor.prob_next_char("HELLO MY NAME IS", " "))
-    print(predictor.prob_next_char("HELLO MY NAME IS ", " "))
+    print(predictor.prob_next_chars("HELLO MY NAME IS"))
+    print(predictor.prob_next_chars("HELLO MY NAME IS "))

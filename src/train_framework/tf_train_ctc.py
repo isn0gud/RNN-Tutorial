@@ -575,7 +575,7 @@ class Tf_train_ctc(object):
             self.train_ler += self.sess.run(self.ler, feed_dict=feed) * dataset._batch_size
             logger.debug('Label error rate: %.2f', self.train_ler)
 
-            soft_max_over_chars.append(self.sess.run(self.logits, feed_dict={
+            soft_max_over_chars.append(self.sess.run(tf.nn.softmax(self.logits), feed_dict={
                 self.input_tensor: source,
                 self.targets: sparse_labels,
                 self.seq_length: source_lengths}))
