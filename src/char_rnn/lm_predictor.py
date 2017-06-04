@@ -34,8 +34,6 @@ class LModel:
             # if ther is no prefix return equal prob for each char
             ret = dict(map(lambda idx_n_char_prob: (self.chars[idx_n_char_prob[0]], idx_n_char_prob[1]),
                            enumerate([1.0 / 29.0] * 28)))
-            # beginning with space prob = 0
-            ret[0] = 0
         else:
             with self.graph.as_default():
                 ret = self.model.prob_next_chars(self.sess, self.chars, self.vocab, prefix)

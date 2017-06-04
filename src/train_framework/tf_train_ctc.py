@@ -219,8 +219,8 @@ class Tf_train_ctc(object):
 
     def run_model(self):
         self.graph = tf.Graph()
-        with self.graph.as_default(), tf.device('/cpu:0'):
-
+        # with self.graph.as_default(), tf.device('/cpu:0'):
+        with self.graph.as_default():
             with tf.device(self.tf_device):
                 # Run multiple functions on the specificed tf_device
                 # tf_device GPU set in configs, but is overridden if not available
@@ -278,15 +278,6 @@ class Tf_train_ctc(object):
                                                                                     decode=True,
                                                                                     write_to_file=False,
                                                                                     epoch=self.epochs)
-
-            for single_ctc_prob in soft_max_over_chars:
-                # soft_max_over_chars [max_seq_len, batch_size, num_chars]
-                batch_size = single_ctc_prob.shape[1]
-                for b in range(batch_size):
-                    sample = single_ctc_prob[:, b, :]
-                    sample = sample.T
-                    best_hyp, p_blank = self.beam_search_lm_decoder.decode(sample)
-                    logger.info('Beam search decoded seq: {} - prob: {}'.format(best_hyp, p_blank))
 
             # Add the final test data to the summary writer
             # (single point on the graph for end of training run)
@@ -413,7 +404,7 @@ class Tf_train_ctc(object):
 
             epoch_start = time.time()
 
-            self.train_cost, self.train_ler, _ = self.run_batches(
+            self.train_cost, self.train_ler, _ , _ = self.run_batches(
                 self.data_sets.train,
                 is_training=True,
                 decode=False,
@@ -575,10 +566,7 @@ class Tf_train_ctc(object):
             self.train_ler += self.sess.run(self.ler, feed_dict=feed) * dataset._batch_size
             logger.debug('Label error rate: %.2f', self.train_ler)
 
-            soft_max_over_chars.append(self.sess.run(tf.nn.softmax(self.logits), feed_dict={
-                self.input_tensor: source,
-                self.targets: sparse_labels,
-                self.seq_length: source_lengths}))
+
 
             # Turn on decode only 1 batch per epoch
             if decode and batch == 0:
@@ -606,6 +594,23 @@ class Tf_train_ctc(object):
                     counter += 1
                     train_wers.append(self.calculate_wer(orig, decoded_str))
 
+                soft_max_over_chars.append(self.sess.run(tf.nn.softmax(self.logits), feed_dict={
+                    self.input_tensor: source,
+                    self.targets: sparse_labels,
+                    self.seq_length: source_lengths}))
+
+
+                for single_ctc_prob in soft_max_over_chars:
+                    # soft_max_over_chars [max_seq_len, batch_size, num_chars]
+                    batch_size = single_ctc_prob.shape[1]
+                    for b in range(batch_size):
+                        sample = single_ctc_prob[:, b, :]
+                        sample = sample.T
+                        best_hyp, p_blank = self.beam_search_lm_decoder.decode(sample)
+                        lables = self.data_sets.test.next_batch()
+                        logger.info('Beam search orig seq: {}'.format(dense_labels[b]))
+                        logger.info('Beam search decoded seq: {} - prob: {}'.format(best_hyp, p_blank))
+
                 # save out variables for testing
                 self.dense_decoded = dense_decoded
                 self.dense_labels = dense_labels
@@ -622,7 +627,7 @@ class Tf_train_ctc(object):
             [self.avg_loss, self.summary_op], feed)
         self.writer.add_summary(summary_line, epoch)
 
-        return self.train_cost, self.train_ler, self.train_wer, soft_max_over_chars
+        return self.train_cost, self.train_ler, self.train_wer
 
 
 # to run in console
