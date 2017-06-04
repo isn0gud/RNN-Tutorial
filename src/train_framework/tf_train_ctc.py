@@ -57,7 +57,8 @@ class Tf_train_ctc(object):
     def __init__(self,
                  config_file='neural_network.ini',
                  model_name=None,
-                 debug=False):
+                 debug=False,
+                 initial_epoch=0):
         # set TF logging verbosity
         tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -66,6 +67,7 @@ class Tf_train_ctc(object):
         self.conf_path = get_conf_dir(debug=self.debug)
         self.conf_path = os.path.join(self.conf_path, config_file)
         self.load_configs()
+        self.initial_epoch = initial_epoch
 
         # Verify that the GPU is operational, if not use CPU
         if not gpu_tool.check_if_gpu_available(self.tf_device):
@@ -252,6 +254,11 @@ class Tf_train_ctc(object):
             # If there is a model_path declared, then restore the model
             if self.model_path is not None:
                 self.saver.restore(self.sess, self.model_path)
+
+                if 0 < self.initial_epoch:
+                    # MAIN LOGIC for running the training epochs
+                    logger.info(section.format('Run training epoch'))
+                    self.run_training_epochs(self.initial_epoch)
             # If there is NOT a model_path declared, build the model from scratch
             else:
                 # Op to initialize the variables
@@ -262,7 +269,7 @@ class Tf_train_ctc(object):
 
                 # MAIN LOGIC for running the training epochs
                 logger.info(section.format('Run training epoch'))
-                self.run_training_epochs()
+                self.run_training_epochs(self.initial_epoch)
 
             logger.info(section.format('Decoding test data'))
             # make the assumption for working on the test data, that the epoch here is the last epoch
@@ -395,9 +402,9 @@ class Tf_train_ctc(object):
             self.test_wer_op = tf.summary.scalar(
                 "test_wer", self.wer_placeholder)
 
-    def run_training_epochs(self):
+    def run_training_epochs(self, initial_epoch=0):
         train_start = time.time()
-        for epoch in range(self.epochs):
+        for epoch in range(initial_epoch, self.epochs):
             # Initialize variables that can be updated
             save_dev_model = False
             stop_training = False
@@ -629,8 +636,10 @@ if __name__ == '__main__':
     @click.option('--name', default=None, help='Model name for logging')
     @click.option('--debug', type=bool, default=False,
                   help='Use debug settings in config file')
+    @click.option('--initial_epoch', type=int, default=0,
+                  help='Resume training from previous epoch')
     # Train RNN model using a given configuration file
-    def main(config='neural_network.ini', name=None, debug=False):
+    def main(config='neural_network.ini', name=None, debug=False, initial_epoch=0):
         logging.basicConfig(level=logging.DEBUG,
                             format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
         global logger
@@ -638,7 +647,7 @@ if __name__ == '__main__':
 
         # create the Tf_train_ctc class
         tf_train_ctc = Tf_train_ctc(
-            config_file=config, model_name=name, debug=debug)
+            config_file=config, model_name=name, debug=debug, initial_epoch=initial_epoch)
 
         # run the training
         tf_train_ctc.run_model()
