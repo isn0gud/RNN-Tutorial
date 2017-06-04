@@ -153,16 +153,16 @@ def BiRNN(conf_path, batch_x, seq_length, n_input, n_context):
         tf.summary.histogram("biases", b2)
         tf.summary.histogram("activations", layer_2)
 
-    # 3rd layer
-    with tf.name_scope('fc3'):
-        b3 = variable_on_cpu('b3', [n_hidden_3], tf.random_normal_initializer(stddev=b3_stddev))
-        h3 = variable_on_cpu('h3', [n_hidden_2, n_hidden_3], tf.random_normal_initializer(stddev=h3_stddev))
-        layer_3 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(layer_2, h3), b3)), relu_clip)
-        layer_3 = tf.nn.dropout(layer_3, (1.0 - dropout[2]))
-
-        tf.summary.histogram("weights", h3)
-        tf.summary.histogram("biases", b3)
-        tf.summary.histogram("activations", layer_3)
+    # # 3rd layer
+    # with tf.name_scope('fc3'):
+    #     b3 = variable_on_cpu('b3', [n_hidden_3], tf.random_normal_initializer(stddev=b3_stddev))
+    #     h3 = variable_on_cpu('h3', [n_hidden_2, n_hidden_3], tf.random_normal_initializer(stddev=h3_stddev))
+    #     layer_3 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(layer_2, h3), b3)), relu_clip)
+    #     layer_3 = tf.nn.dropout(layer_3, (1.0 - dropout[2]))
+    #
+    #     tf.summary.histogram("weights", h3)
+    #     tf.summary.histogram("biases", b3)
+    #     tf.summary.histogram("activations", layer_3)
 
     # # Create the forward and backward LSTM units. Inputs have length `n_cell_dim`.
     # # LSTM forget gate bias initialized at `1.0` (default), meaning less forgetting
@@ -221,12 +221,12 @@ def BiRNN(conf_path, batch_x, seq_length, n_input, n_context):
 
         # `layer_3` is now reshaped into `[n_steps, batch_size, 2*n_cell_dim]`,
         # as the BRNN expects its input to be of shape `[max_time, batch_size, input_size]`.
-        layer_3 = tf.reshape(layer_3, [-1, batch_x_shape[0], n_hidden_3])
+        layer_2 = tf.reshape(layer_2, [-1, batch_x_shape[0], n_hidden_3])
 
         # Now we feed `layer_3` into the BRNN cell and obtain the BRNN output.
         outputs, output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=rnn_fw_cell,
                                                                  cell_bw=rnn_bw_cell,
-                                                                 inputs=layer_3,
+                                                                 inputs=layer_2,
                                                                  dtype=tf.float32,
                                                                  time_major=True,
                                                                  sequence_length=seq_length)
